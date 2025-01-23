@@ -47,11 +47,11 @@ class QuantumRetriever:
         :param doc_embeddings: np.array of shape (num_docs, embedding_dim)
         :param query_embedding: np.array of shape (embedding_dim,)
         :return: A dictionary with document indices as keys and
-                 measured probabilities as values.
+                measured probabilities as values.
         """
         if len(doc_embeddings) != self.num_docs:
             raise ValueError(f"Expected {self.num_docs} documents, got {len(doc_embeddings)}.")
-        
+
         # Step 1: Compute similarity scores (dot product)
         similarity_scores = np.array([
             np.dot(doc_embeddings[i], query_embedding) for i in range(self.num_docs)
@@ -75,20 +75,16 @@ class QuantumRetriever:
         # PADDING LOGIC
         # ----------------
         original_length = len(amplitudes)
-        desired_length = next_power_of_two(original_length)
+        desired_length = max(2, next_power_of_two(original_length))  # Ensure at least 2
+
         if desired_length != original_length:
             padded_amps = np.zeros(desired_length, dtype=amplitudes.dtype)
             padded_amps[:original_length] = amplitudes
             amplitudes = padded_amps
             print(f"Padded amplitudes from {original_length} to {desired_length} to satisfy 2^n requirement.")
 
-        # After padding, re-normalize amplitude array if needed
-        sum_sq = np.sum(amplitudes**2)
-        if sum_sq == 0:
-            # fallback uniform
-            amplitudes = np.ones(desired_length) / np.sqrt(desired_length)
-        else:
-            amplitudes = amplitudes / np.sqrt(sum_sq)
+        # Ensure re-normalization after padding
+        amplitudes = amplitudes / np.sqrt(np.sum(amplitudes**2))
 
         # Set the qubit count to log2 of the padded length
         self.num_qubits = int(np.log2(len(amplitudes)))
@@ -120,14 +116,12 @@ class QuantumRetriever:
         counts = result.get_counts()
 
         # Convert measurements to document probabilities
-        # Note: Some measured states may be >= original_length if padding occurred.
         doc_probability_map = {}
         for measured_state, freq in counts.items():
             doc_index = int(measured_state, 2)
             probability = freq / 1024.0
 
-            # If doc_index is out of range of real docs, ignore or store as dummy
-            if doc_index < original_length:
+            if doc_index < original_length:  # Ignore padded indices
                 doc_probability_map[doc_index] = doc_probability_map.get(doc_index, 0) + probability
 
         return doc_probability_map
@@ -135,27 +129,28 @@ class QuantumRetriever:
     def _apply_grover_oracle(self, qc, marked_doc_index):
         """
         Oracle that flips the phase of the 'marked_doc_index' basis state.
+        Handles cases with fewer qubits gracefully.
         """
-        # If doc_index is out of range post-padding, we won't fix that here.
-        # For simplicity, continue using the original marked_doc_index.
-        # If marked_doc_index >= 2^num_qubits, the effect is basically moot.
+        if self.num_qubits == 1:
+            # Single qubit: Apply Z directly
+            qc.z(0)
+            return qc
 
+        # Multi-qubit case
         binary_str = format(marked_doc_index, f'0{self.num_qubits}b')
 
-        # Step 1: Apply X gates for qubits where the marked_doc_index bit is 0
+        # Apply X gates for qubits where the marked_doc_index bit is 0
         for i, bit in enumerate(reversed(binary_str)):
             if bit == '0':
                 qc.x(i)
 
-        # Step 2: Multi-controlled Z gate
+        # Multi-controlled Z gate
         control_qubits = list(range(self.num_qubits - 1))
         target_qubit = self.num_qubits - 1
         mcx_gate = MCXGate(len(control_qubits))
         qc.append(mcx_gate, control_qubits + [target_qubit])
-        qc.z(target_qubit)
-        qc.append(mcx_gate, control_qubits + [target_qubit])
 
-        # Step 3: Uncompute the X gates
+        # Uncompute the X gates
         for i, bit in enumerate(reversed(binary_str)):
             if bit == '0':
                 qc.x(i)
@@ -165,25 +160,23 @@ class QuantumRetriever:
     def _apply_grover_diffuser(self, qc):
         """
         Applies the Grover diffuser, which inverts amplitudes about the mean.
+        Handles cases with fewer qubits gracefully.
         """
-        # Step 1: Apply H on all qubits
-        qc.h(range(self.num_qubits))
+        if self.num_qubits == 1:
+            # Single qubit: Apply Z directly
+            qc.z(0)
+            return qc
 
-        # Step 2: X on all qubits
+        # Multi-qubit case
+        qc.h(range(self.num_qubits))
         qc.x(range(self.num_qubits))
 
-        # Step 3: Multi-controlled Z
         control_qubits = list(range(self.num_qubits - 1))
         target_qubit = self.num_qubits - 1
         mcx_gate = MCXGate(len(control_qubits))
         qc.append(mcx_gate, control_qubits + [target_qubit])
-        qc.z(target_qubit)
-        qc.append(mcx_gate, control_qubits + [target_qubit])
 
-        # Step 4: X on all qubits
         qc.x(range(self.num_qubits))
-
-        # Step 5: H on all qubits
         qc.h(range(self.num_qubits))
 
         return qc

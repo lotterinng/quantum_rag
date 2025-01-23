@@ -2,9 +2,6 @@ import os
 from quantum_rag_pipeline import QuantumRAGPipeline
 from PyPDF2 import PdfReader
 
-import os
-from PyPDF2 import PdfReader
-
 def load_documents_from_folder(folder_path=None):
     """
     Loads documents from .txt and .pdf files in the `data` folder relative to the script's location.
@@ -39,29 +36,56 @@ def load_documents_from_folder(folder_path=None):
             print(f"Skipping file: {filename}")
     
     return docs
+
+def split_documents_into_chunks(documents, chunk_size=512, chunk_overlap=256):
+    """
+    Splits the given list of document texts into smaller chunks for easier processing.
+
+    :param documents: List of strings (document texts).
+    :param chunk_size: Maximum size of each chunk.
+    :param chunk_overlap: Overlap size between consecutive chunks.
+    :return: List of text chunks.
+    """
+    chunks = []
+    for doc in documents:
+        start = 0
+        while start < len(doc):
+            end = start + chunk_size
+            chunks.append(doc[start:end])
+            start = end - chunk_overlap if end < len(doc) else end
+    print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
+    return chunks
+
 if __name__ == "__main__":
     # 1. Load documents from the local 'data' folder
     folder_path = "data"
     docs = load_documents_from_folder()
 
-    # 2. Create and configure the RAG pipeline
-    #    Replace 'BAAI/bge-large-en-v1.5' or 'meta-llama/Llama-3.1-8B'
-    #    with whichever models you want to use
+    # 2. Split documents into smaller chunks
+    print("Splitting documents into smaller chunks...")
+    doc_chunks = split_documents_into_chunks(docs)
+
+    # 3. Create and configure the RAG pipeline
+    print("Creating QuantumRAGPipeline...")
     pipeline = QuantumRAGPipeline(
-        documents=docs,
-        embedding_model_name="BAAI/bge-large-en-v1.5",  # Llama embedding if desired
-        llm_model_name="meta-llama/Llama-3.1-8B",    # Llama 3 for generation
+        documents=doc_chunks,
+        embedding_model_name="BAAI/bge-large-en-v1.5",  # Embedding model
+        llm_model_name="meta-llama/Llama-3.1-8B",  # LLM for generation
     )
 
-    # 3. Build document embeddings
+    # 4. Build document embeddings
+    print("Building embeddings...")
     pipeline.build_embeddings()
 
-    # 4. Initialize quantum retriever
+    # 5. Initialize quantum retriever
+    print("Initializing quantum retriever...")
     pipeline.init_quantum_retriever(max_grover_iterations=3)
 
-    # 5. Run a sample query
+    # 6. Run a sample query
+    print("Running query...")
     query = "How many carats were recovered in 2022."
     answer = pipeline.run(query, top_k=1)
+    print("Query complete. Answer:", answer)
 
     print("=== FINAL RAG ANSWER ===")
     print(answer)

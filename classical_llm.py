@@ -2,14 +2,14 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
 class ClassicalLLM:
-    def __init__(self, model_name="meta-llama/Meta-Llama-3-8B", max_new_tokens=500):
+    def __init__(self, model_name="meta-llama/Llama-3.1-8B", max_new_tokens=500):
         """
-        Initializes the Llama 3 model and tokenizer using Hugging Face's Transformers library.
+        Initializes a simpler LLM (e.g., GPT-2) and tokenizer using Hugging Face.
         """
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=torch.bfloat16,  # Use bfloat16 for performance
+            torch_dtype=torch.float32,  # Use float32 for simplicity
             device_map="auto"           # Automatically map layers to devices
         )
         self.max_new_tokens = max_new_tokens
@@ -21,8 +21,8 @@ class ClassicalLLM:
 
     def generate(self, context, query, do_sample=True):
         """
-        Generates a response using Llama 3 given a context and query.
-        
+        Generates a response using the LLM given a context and query.
+
         :param context: Retrieved context or document text.
         :param query: User's question or query.
         :param do_sample: Whether to use sampling-based generation.
@@ -39,7 +39,7 @@ class ClassicalLLM:
             truncation=True,
         ).to(self.model.device)
 
-        # Set generation parameters based on `do_sample`
+        # Set generation parameters
         generation_kwargs = {
             "max_new_tokens": self.max_new_tokens,
             "pad_token_id": self.tokenizer.pad_token_id,
@@ -47,13 +47,13 @@ class ClassicalLLM:
         if do_sample:
             generation_kwargs.update({
                 "do_sample": True,
-                "temperature": 0.7,  # Adjust for response variability
-                "top_p": 0.9,        # Nucleus sampling for diversity
+                "temperature": 0.7,
+                "top_p": 0.9,
             })
         else:
             generation_kwargs["do_sample"] = False
 
-        # Generate the response using the model
+        # Generate the response
         outputs = self.model.generate(
             inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
