@@ -2,11 +2,23 @@ import os
 from quantum_rag_pipeline import QuantumRAGPipeline
 from PyPDF2 import PdfReader
 
-def load_documents_from_folder(folder_path: str):
+import os
+from PyPDF2 import PdfReader
+
+def load_documents_from_folder(folder_path=None):
     """
-    Loads documents from .txt and .pdf files in a specified folder.
+    Loads documents from .txt and .pdf files in the `data` folder relative to the script's location.
     Returns a list of strings, each representing the file contents.
     """
+    # Get the current directory of the script
+    if folder_path is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        folder_path = os.path.join(script_dir, "data")
+
+    # Check if the folder exists
+    if not os.path.exists(folder_path):
+        raise FileNotFoundError(f"The folder 'data' does not exist at {folder_path}")
+
     docs = []
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -25,13 +37,12 @@ def load_documents_from_folder(folder_path: str):
 
         else:
             print(f"Skipping file: {filename}")
-
+    
     return docs
-
 if __name__ == "__main__":
     # 1. Load documents from the local 'data' folder
     folder_path = "data"
-    docs = load_documents_from_folder(folder_path)
+    docs = load_documents_from_folder()
 
     # 2. Create and configure the RAG pipeline
     #    Replace 'BAAI/bge-large-en-v1.5' or 'meta-llama/Llama-3.1-8B'
