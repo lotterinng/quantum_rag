@@ -1,6 +1,7 @@
 # quantum_rag_pipeline.py
 
-import numpy as np
+"""Simplified RAG pipeline that avoids heavy third-party dependencies."""
+
 from quantum_retriever import QuantumRetriever
 from classical_llm import ClassicalLLM
 from embeddings import EmbeddingManager
@@ -47,7 +48,9 @@ class QuantumRAGPipeline:
         if self.doc_embeddings is None:
             raise ValueError("Must build document embeddings first!")
 
-        embedding_dim = self.doc_embeddings.shape[1]
+        # self.doc_embeddings is a list of lists; the embedding dimension is the
+        # length of a single embedding vector.
+        embedding_dim = len(self.doc_embeddings[0]) if self.doc_embeddings else 0
         self.q_retriever = QuantumRetriever(
             num_docs=self.num_docs,
             embedding_dim=embedding_dim,

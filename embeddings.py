@@ -1,36 +1,43 @@
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-import numpy as np
+"""Simple bag-of-words embedding utilities.
+This minimal implementation avoids any third-party dependencies.
+"""
+
+from collections import Counter
+from typing import List
+
 
 class EmbeddingManager:
-    """
-    Manages embedding logic for documents and queries using a Llama embedding model.
-    """
+    """Create rudimentary embeddings using term frequency."""
 
-    def __init__(self, model_name):
-        """
-        Initializes the Llama embedding model.
-        
-        :param model_name: Name of the Llama embedding model.
-        """
-        self.model_name = model_name
-        self.model = HuggingFaceEmbedding(model_name=model_name)
+    def __init__(self, model_name: str = None):
+        # model_name kept for API compatibility; it's unused in this stub
+        self.vocab = {}
 
-    def embed_documents(self, documents):
-        """
-        Embeds a list of documents using the Llama embedding model.
+    def _tokenize(self, text: str) -> List[str]:
+        # Very naive tokenization on whitespace and lower-casing
+        return text.lower().split()
 
-        :param documents: List of text docs
-        :return: np.array of shape (num_docs, embedding_dim)
-        """
-        embeddings = [self.model.get_text_embedding(doc) for doc in documents]
-        return np.array(embeddings)
+    def embed_documents(self, documents: List[str]) -> List[List[float]]:
+        tokenized_docs = [self._tokenize(doc) for doc in documents]
+        vocab_set = set(word for tokens in tokenized_docs for word in tokens)
+        self.vocab = {word: idx for idx, word in enumerate(sorted(vocab_set))}
 
-    def embed_query(self, query):
-        """
-        Embeds a single query using the Llama embedding model.
+        embeddings = []
+        for tokens in tokenized_docs:
+            vec = [0.0] * len(self.vocab)
+            counts = Counter(tokens)
+            for word, count in counts.items():
+                idx = self.vocab[word]
+                vec[idx] = float(count)
+            embeddings.append(vec)
+        return embeddings
 
-        :param query: Single query string
-        :return: np.array of shape (embedding_dim,)
-        """
-        embedding = self.model.get_text_embedding(query)
-        return np.array(embedding)
+    def embed_query(self, query: str) -> List[float]:
+        tokens = self._tokenize(query)
+        vec = [0.0] * len(self.vocab)
+        counts = Counter(tokens)
+        for word, count in counts.items():
+            if word in self.vocab:
+                idx = self.vocab[word]
+                vec[idx] = float(count)
+        return vec

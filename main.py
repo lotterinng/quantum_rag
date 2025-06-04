@@ -1,6 +1,10 @@
 import os
 from quantum_rag_pipeline import QuantumRAGPipeline
-from PyPDF2 import PdfReader
+
+try:
+    from PyPDF2 import PdfReader  # type: ignore
+except Exception:  # pragma: no cover - optional dependency may be missing
+    PdfReader = None
 
 def load_documents_from_folder(folder_path=None):
     """
@@ -25,12 +29,14 @@ def load_documents_from_folder(folder_path=None):
                 file_contents = f.read()
                 docs.append(file_contents)
 
-        elif filename.lower().endswith(".pdf"):
+        elif filename.lower().endswith(".pdf") and PdfReader is not None:
             reader = PdfReader(file_path)
             pdf_text = []
             for page in reader.pages:
                 pdf_text.append(page.extract_text() or "")
             docs.append("\n".join(pdf_text))
+        elif filename.lower().endswith(".pdf"):
+            print(f"Skipping PDF file (PyPDF2 not available): {filename}")
 
         else:
             print(f"Skipping file: {filename}")
