@@ -1,0 +1,5 @@
+-r requirements.txt
+accelerate>=1.3
+sentence-transformers>=3.3
+torch>=2.5
+transformers>=4.48
