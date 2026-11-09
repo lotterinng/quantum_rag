@@ -1,10 +1,14 @@
+import argparse
+import logging
 import os
+
+from pypdf import PdfReader
+
 from quantum_rag_pipeline import QuantumRAGPipeline
 
-try:
-    from PyPDF2 import PdfReader  # type: ignore
-except Exception:  # pragma: no cover - optional dependency may be missing
-    PdfReader = None
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+LFS_POINTER_PREFIX = b"version https://git-lfs"
 
 def load_documents_from_folder(folder_path=None):
     """
@@ -21,7 +25,7 @@ def load_documents_from_folder(folder_path=None):
         raise FileNotFoundError(f"The folder 'data' does not exist at {folder_path}")
 
     docs = []
-    for filename in os.listdir(folder_path):
+    for filename in sorted(os.listdir(folder_path)):
         file_path = os.path.join(folder_path, filename)
 
         if filename.lower().endswith(".txt"):
@@ -29,14 +33,14 @@ def load_documents_from_folder(folder_path=None):
                 file_contents = f.read()
                 docs.append(file_contents)
 
-        elif filename.lower().endswith(".pdf") and PdfReader is not None:
-            reader = PdfReader(file_path)
-            pdf_text = []
-            for page in reader.pages:
-                pdf_text.append(page.extract_text() or "")
-            docs.append("\n".join(pdf_text))
         elif filename.lower().endswith(".pdf"):
-            print(f"Skipping PDF file (PyPDF2 not available): {filename}")
+            with open(file_path, "rb") as f:
+                if f.read(len(LFS_POINTER_PREFIX)) == LFS_POINTER_PREFIX:
+                    print(f"Skipping {filename}: it is a Git LFS pointer. Run `git lfs pull` to download it.")
+                    continue
+            reader = PdfReader(file_path)
+            pdf_text = [page.extract_text() or "" for page in reader.pages]
+            docs.append("\n".join(pdf_text))
 
         else:
             print(f"Skipping file: {filename}")
@@ -52,6 +56,8 @@ def split_documents_into_chunks(documents, chunk_size=512, chunk_overlap=256):
     :param chunk_overlap: Overlap size between consecutive chunks.
     :return: List of text chunks.
     """
+    if not 0 <= chunk_overlap < chunk_size:
+        raise ValueError("chunk_overlap must be at least 0 and smaller than chunk_size.")
     chunks = []
     for doc in documents:
         start = 0
@@ -62,36 +68,33 @@ def split_documents_into_chunks(documents, chunk_size=512, chunk_overlap=256):
     print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
     return chunks
 
-if __name__ == "__main__":
-    # 1. Load documents from the local 'data' folder
-    folder_path = "data"
-    docs = load_documents_from_folder()
+def main():
+    parser = argparse.ArgumentParser(description="Answer a question from local documents with QuantumRAG.")
+    parser.add_argument("--query", default="How many carats were recovered in 2022?")
+    parser.add_argument("--data-dir", default=None, help="Folder of .txt and .pdf files (default: ./data)")
+    parser.add_argument("--top-k", type=int, default=3)
+    parser.add_argument("--max-iterations", type=int, default=None, help="Limit Grover iterations (default: optimal)")
+    parser.add_argument("--embedding-backend", choices=["auto", "sentence-transformers", "tfidf"], default="auto")
+    parser.add_argument("--llm-backend", choices=["auto", "transformers", "extractive"], default="auto")
+    args = parser.parse_args()
 
-    # 2. Split documents into smaller chunks
-    print("Splitting documents into smaller chunks...")
+    docs = load_documents_from_folder(args.data_dir)
     doc_chunks = split_documents_into_chunks(docs)
 
-    # 3. Create and configure the RAG pipeline
-    print("Creating QuantumRAGPipeline...")
     pipeline = QuantumRAGPipeline(
         documents=doc_chunks,
-        embedding_model_name="BAAI/bge-large-en-v1.5",  # Embedding model
-        llm_model_name="meta-llama/Llama-3.1-8B",  # LLM for generation
+        embedding_backend=args.embedding_backend,
+        llm_backend=args.llm_backend,
     )
-
-    # 4. Build document embeddings
-    print("Building embeddings...")
     pipeline.build_embeddings()
+    pipeline.init_quantum_retriever(max_grover_iterations=args.max_iterations)
+    answer = pipeline.run(args.query, top_k=args.top_k)
 
-    # 5. Initialize quantum retriever
-    print("Initializing quantum retriever...")
-    pipeline.init_quantum_retriever(max_grover_iterations=3)
-
-    # 6. Run a sample query
-    print("Running query...")
-    query = "How many carats were recovered in 2022."
-    answer = pipeline.run(query, top_k=1)
-    print("Query complete. Answer:", answer)
-
+    print(f"Backends: embeddings={pipeline.embedding_manager.backend}, llm={pipeline.llm.backend}")
+    print(f"Quantum retrieval: {pipeline.q_retriever.last_run}")
     print("=== FINAL RAG ANSWER ===")
     print(answer)
+
+
+if __name__ == "__main__":
+    main()

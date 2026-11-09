@@ -1,7 +1,9 @@
 # QuantumRAG Project
 
 ## Overview
-QuantumRAG (Quantum Retrieval-Augmented Generation) is a hybrid pipeline that combines quantum computing techniques, document retrieval, and large language models (LLMs) to answer user queries based on a corpus of documents. The pipeline uses quantum-inspired retrieval (Grover-like search) to select relevant documents and generates answers using a pre-trained language model.
+QuantumRAG (Quantum Retrieval-Augmented Generation) is a hybrid pipeline that combines quantum computing techniques, document retrieval, and large language models (LLMs) to answer user queries based on a corpus of documents. The pipeline uses Grover-style amplitude amplification, run on the Qiskit Aer simulator, to select relevant documents and generates answers using a pre-trained language model.
+
+> **What the quantum step does:** similarity scores are computed classically, loaded into a quantum state, and the top documents are amplified. Because the oracle is built from those classical scores, this demonstrates the technique and gives no speedup over sorting the scores.
 
 This project is designed to demonstrate the integration of quantum retrieval methods with state-of-the-art machine learning models for document-based question answering.
 
@@ -18,20 +20,21 @@ This project is designed to demonstrate the integration of quantum retrieval met
    - Processes and extracts text from `.txt` and `.pdf` files.
 4. **Customizable Models**:
    - Uses transformer-based embedding models (e.g., `BAAI/bge-large-en-v1.5`).
-   - Integrates with Llama models (e.g., `meta-llama/Meta-Llama-3-8B`).
+   - Integrates with Llama models (e.g., `meta-llama/Llama-3.1-8B-Instruct`).
 
 ---
 
 ## Prerequisites
 
 1. **System Requirements**:
-   - Python 3.8+
+   - Python 3.10+
+   - Git LFS, to download the PDF in `data/` (`git lfs pull`).
    - GPU for faster inference (Optional).
 
 2. **Python Dependencies**:
-   Install the required Python libraries:
    ```bash
-   pip install transformers sentence-transformers qiskit qiskit-aer PyPDF2 numpy
+   pip install -r requirements.txt          # Quantum retrieval with offline TF-IDF and extractive answers
+   pip install -r requirements-models.txt   # Adds the BGE embedding model and Llama
    ```
 
 3. **Additional Tools**:
@@ -61,13 +64,18 @@ quantum_rag/
 Place your `.txt` and `.pdf` files in the `data/` directory.
 
 ### 2. Run the Project
-Execute the `main.py` script to process the documents and answer a sample query:
 ```bash
 python main.py
+python main.py --query "What was the 2022 production?" --top-k 3
 ```
 
-### 3. Modify Queries
-In `main.py`, change the `query` variable to test different questions.
+By default the app uses the BGE and Llama models when they can load, and otherwise prints a warning and falls back to TF-IDF and sentence extraction. To require a backend, pass `--embedding-backend sentence-transformers` or `--llm-backend transformers`. To force offline mode, pass `--embedding-backend tfidf --llm-backend extractive`.
+
+### 3. Run the Tests
+```bash
+pip install pytest
+python -m pytest
+```
 
 ---
 
@@ -85,27 +93,27 @@ In `main.py`, change the `query` variable to test different questions.
   - Language model integration.
 
 ### 3. `quantum_retriever.py`
-- Implements quantum-inspired retrieval:
+- Implements Grover-style retrieval in Qiskit:
   - Encodes document embeddings as quantum states.
   - Applies Grover-like search for document selection.
 
 ### 4. `embeddings.py`
-- Manages embedding generation for documents and queries using models like `sentence-transformers` and `llama`.
+- Manages embedding generation for documents and queries using `sentence-transformers`, with TF-IDF as the offline fallback.
 
 ### 5. `classical_llm.py`
 - Wraps the LLM for text generation.
-- Customizable for different LLM models.
+- Customizable for different LLM models, with sentence extraction as the offline fallback.
 
 ---
 
 ## Example Output
 After running `main.py`, you will see output similar to this:
 ```
-Loading checkpoint shards: 100%
-Padded amplitudes from 13 to 16 to satisfy 2^n requirement.
-Final amplitude array length: 16 (2^4). Norm=1.0
+Split 1 documents into 3193 chunks.
+Backends: embeddings=tfidf, llm=extractive
+Quantum retrieval: {'qubits': 12, 'iterations': 1, 'marked_prior': 0.1498, 'marked_final': 0.8633}
 === FINAL RAG ANSWER ===
-Grover's algorithm provides a quadratic speedup for search problems by...
+[extractive, no LLM] In the year to 31 December 2022, the company recovered 24.1 million carats (2021: 22.3 million carats), a 8% increase.
 ```
 
 ---

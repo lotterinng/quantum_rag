@@ -1,6 +1,6 @@
 # quantum_rag_pipeline.py
 
-"""Simplified RAG pipeline that avoids heavy third-party dependencies."""
+"""RAG pipeline: embeddings, Grover-style retrieval, then answer generation."""
 
 from quantum_retriever import QuantumRetriever
 from classical_llm import ClassicalLLM
@@ -18,15 +18,19 @@ class QuantumRAGPipeline:
     def __init__(self, 
                  documents,
                  embedding_model_name="BAAI/bge-large-en-v1.5",
-                 llm_model_name="meta-llama/Llama-3.1-8B"):
+                 llm_model_name="meta-llama/Llama-3.1-8B-Instruct",
+                 embedding_backend="auto",
+                 llm_backend="auto"):
         """
         :param documents: List of strings (the corpus).
         :param embedding_model_name: Name of the embedding model.
         :param llm_model_name: Name of the LLM for generation.
         """
+        if not documents:
+            raise ValueError("No documents to index.")
         self.documents = documents
-        self.embedding_manager = EmbeddingManager(model_name=embedding_model_name)
-        self.llm = ClassicalLLM(model_name=llm_model_name)
+        self.embedding_manager = EmbeddingManager(model_name=embedding_model_name, backend=embedding_backend)
+        self.llm = ClassicalLLM(model_name=llm_model_name, backend=llm_backend)
 
         self.doc_embeddings = None
         self.q_retriever = None
@@ -48,9 +52,7 @@ class QuantumRAGPipeline:
         if self.doc_embeddings is None:
             raise ValueError("Must build document embeddings first!")
 
-        # self.doc_embeddings is a list of lists; the embedding dimension is the
-        # length of a single embedding vector.
-        embedding_dim = len(self.doc_embeddings[0]) if self.doc_embeddings else 0
+        embedding_dim = len(self.doc_embeddings[0])
         self.q_retriever = QuantumRetriever(
             num_docs=self.num_docs,
             embedding_dim=embedding_dim,
@@ -80,7 +82,8 @@ class QuantumRAGPipeline:
         # 2. Quantum retrieval -> doc_index -> probability
         doc_probability_map = self.q_retriever.encode_documents(
             self.doc_embeddings,
-            query_embedding
+            query_embedding,
+            top_k=top_k
         )
 
         # 3. Sort documents by measured probability (descending) and pick top_k
